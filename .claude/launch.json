@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "piano",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8437", "--directory", "/Users/kamatbot/Piano"],
-      "port": 8437
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["/Users/kamatbot/Piano/server.js"],
+      "port": 3000
     }
   ]
 }

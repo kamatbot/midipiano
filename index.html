@@ -40,8 +40,6 @@
   .card .meta { color: #636e72; font-size: .9rem; }
   .card .stars { color: #fdcb6e; letter-spacing: 2px; }
   .card.add { background: rgba(255,255,255,.5); border: 3px dashed #fff; box-shadow: none; }
-  .card .del { cursor: pointer; color: #d63031; font-weight: bold; padding: 2px 8px; float: right; }
-
   /* ---------- Player ---------- */
   #player { background: #1e1e2f; }
   #topbar {
@@ -291,13 +289,10 @@ window.addEventListener("keyup", e => heldKeys.delete(e.key));
 /* ---------- library screen ---------- */
 const cardsEl = document.getElementById("cards");
 const fileInput = document.getElementById("midiFile");
-let customSongs = [];
-try { customSongs = JSON.parse(localStorage.getItem("pianoCustomSongs") || "[]"); } catch {}
-
-function saveCustom() {
-  try { localStorage.setItem("pianoCustomSongs", JSON.stringify(customSongs)); }
-  catch (e) { console.warn("could not save song", e); }
-}
+let customSongs = []; // shared library, served by server.js
+fetch("/api/songs").then(r => r.json())
+  .then(s => { customSongs = s; renderCards(); })
+  .catch(() => {}); // offline / static hosting: built-ins only
 
 function renderCards() {
   cardsEl.innerHTML = "";
@@ -308,15 +303,7 @@ function renderCards() {
     const h = document.createElement("h2"); h.textContent = s.title; // textContent: file names are untrusted
     const meta = document.createElement("div"); meta.className = "meta";
     if (s.custom) {
-      const del = document.createElement("span");
-      del.className = "del"; del.textContent = "✕"; del.title = "Remove song";
-      del.onclick = e => {
-        e.stopPropagation();
-        customSongs = customSongs.filter(c => c !== s);
-        saveCustom();
-        renderCards();
-      };
-      meta.append("🎵 your upload", del);
+      meta.textContent = "🎵 uploaded";
     } else {
       meta.innerHTML = `<span class="stars">${"★".repeat(s.stars)}${"☆".repeat(3 - s.stars)}</span>`;
     }
@@ -336,16 +323,27 @@ fileInput.onchange = async () => {
   const f = fileInput.files[0];
   fileInput.value = "";
   if (!f) return;
+  let parsed;
   try {
-    const { notes: parsed, bpm } = parseMidi(await f.arrayBuffer());
-    const s = { title: f.name.replace(/\.midi?$/i, ""), emoji: "🎵", bpm, notes: parsed, custom: true };
-    customSongs.push(s);
-    saveCustom();
-    renderCards();
-    openSong(s);
+    parsed = parseMidi(await f.arrayBuffer());
   } catch (e) {
     console.warn(e);
-    alert("Sorry, couldn't read that file. Please upload a standard MIDI (.mid) file.");
+    return alert("Sorry, couldn't read that file. Please upload a standard MIDI (.mid) file.");
+  }
+  try {
+    const res = await fetch("/api/songs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: f.name.replace(/\.midi?$/i, ""), bpm: parsed.bpm, notes: parsed.notes }),
+    });
+    if (!res.ok) throw Error("save failed: " + res.status);
+    const saved = await res.json();
+    if (!customSongs.some(c => c.title === saved.title)) customSongs.push(saved);
+    renderCards();
+    openSong(saved);
+  } catch (e) {
+    console.warn(e);
+    alert("The song was read, but saving it to the shared library failed. Please try again.");
   }
 };
 
