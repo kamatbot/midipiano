@@ -366,7 +366,8 @@ function parseMidi(buf) {
   const raw = [];
   for (let t = 0; t < ntrk; t++) {
     if (str(4) !== "MTrk") throw Error("bad track");
-    const end = p + u32();
+    const tlen = u32(); // NB: must read length before using p — `p + u32()` reads p too early
+    const end = p + tlen;
     let tick = 0, status = 0;
     const on = {};
     while (p < end) {
@@ -396,9 +397,15 @@ function parseMidi(buf) {
     while (m > HIGH) m -= 12;
     return { midi: m, start: n.s / div, dur: Math.max(n.d / div, 0.15) };
   }).sort((a, b) => a.start - b.start);
-  const t0 = out[0].start;
-  out.forEach(n => n.start -= t0);
-  return { notes: out, bpm: Math.min(180, Math.max(40, Math.round(60000000 / tempo))) };
+  // files often duplicate a melody across tracks (piano + music box) — keep one copy
+  const seen = new Set();
+  const uniq = out.filter(n => {
+    const k = `${n.midi},${n.start},${n.dur}`;
+    return seen.has(k) ? false : seen.add(k);
+  });
+  const t0 = uniq[0].start;
+  uniq.forEach(n => n.start -= t0);
+  return { notes: uniq, bpm: Math.min(180, Math.max(40, Math.round(60000000 / tempo))) };
 }
 
 /* ---------- player ---------- */
