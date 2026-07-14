@@ -39,6 +39,8 @@
   .card h2 { font-size: 1.15rem; margin: 6px 0 4px; }
   .card .meta { color: #636e72; font-size: .9rem; }
   .card .stars { color: #fdcb6e; letter-spacing: 2px; }
+  .card.add { background: rgba(255,255,255,.5); border: 3px dashed #fff; box-shadow: none; }
+  .card .del { cursor: pointer; color: #d63031; font-weight: bold; padding: 2px 8px; float: right; }
 
   /* ---------- Player ---------- */
   #player { background: #1e1e2f; }
@@ -95,6 +97,7 @@
   <h1>🎹 Mini Piano</h1>
   <p class="sub">Pick a song and play along — the falling notes show you which keys to press!</p>
   <div class="cards" id="cards"></div>
+  <input type="file" id="midiFile" accept=".mid,.midi" hidden>
 </div>
 
 <!-- ================= PLAYER ================= -->
@@ -287,14 +290,116 @@ window.addEventListener("keyup", e => heldKeys.delete(e.key));
 
 /* ---------- library screen ---------- */
 const cardsEl = document.getElementById("cards");
-SONGS.forEach((s, i) => {
-  const b = document.createElement("button");
-  b.className = "card";
-  b.innerHTML = `<div class="emoji">${s.emoji}</div><h2>${s.title}</h2>
-    <div class="meta"><span class="stars">${"★".repeat(s.stars)}${"☆".repeat(3 - s.stars)}</span></div>`;
-  b.onclick = () => openSong(i);
-  cardsEl.appendChild(b);
-});
+const fileInput = document.getElementById("midiFile");
+let customSongs = [];
+try { customSongs = JSON.parse(localStorage.getItem("pianoCustomSongs") || "[]"); } catch {}
+
+function saveCustom() {
+  try { localStorage.setItem("pianoCustomSongs", JSON.stringify(customSongs)); }
+  catch (e) { console.warn("could not save song", e); }
+}
+
+function renderCards() {
+  cardsEl.innerHTML = "";
+  for (const s of [...SONGS, ...customSongs]) {
+    const b = document.createElement("button");
+    b.className = "card";
+    const em = document.createElement("div"); em.className = "emoji"; em.textContent = s.emoji;
+    const h = document.createElement("h2"); h.textContent = s.title; // textContent: file names are untrusted
+    const meta = document.createElement("div"); meta.className = "meta";
+    if (s.custom) {
+      const del = document.createElement("span");
+      del.className = "del"; del.textContent = "✕"; del.title = "Remove song";
+      del.onclick = e => {
+        e.stopPropagation();
+        customSongs = customSongs.filter(c => c !== s);
+        saveCustom();
+        renderCards();
+      };
+      meta.append("🎵 your upload", del);
+    } else {
+      meta.innerHTML = `<span class="stars">${"★".repeat(s.stars)}${"☆".repeat(3 - s.stars)}</span>`;
+    }
+    b.append(em, h, meta);
+    b.onclick = () => openSong(s);
+    cardsEl.appendChild(b);
+  }
+  const add = document.createElement("button");
+  add.className = "card add";
+  add.innerHTML = `<div class="emoji">➕</div><h2>Add a song</h2><div class="meta">upload a .mid (MIDI) file</div>`;
+  add.onclick = () => fileInput.click();
+  cardsEl.appendChild(add);
+}
+renderCards();
+
+fileInput.onchange = async () => {
+  const f = fileInput.files[0];
+  fileInput.value = "";
+  if (!f) return;
+  try {
+    const { notes: parsed, bpm } = parseMidi(await f.arrayBuffer());
+    const s = { title: f.name.replace(/\.midi?$/i, ""), emoji: "🎵", bpm, notes: parsed, custom: true };
+    customSongs.push(s);
+    saveCustom();
+    renderCards();
+    openSong(s);
+  } catch (e) {
+    console.warn(e);
+    alert("Sorry, couldn't read that file. Please upload a standard MIDI (.mid) file.");
+  }
+};
+
+/* ---------- minimal Standard MIDI File parser ---------- */
+/* ponytail: melody+chords import as-is (no per-track picking); add a track chooser if uploads get too busy */
+function parseMidi(buf) {
+  const d = new DataView(buf); let p = 0;
+  const str = n => { let s = ""; while (n--) s += String.fromCharCode(d.getUint8(p++)); return s; };
+  const u32 = () => { const v = d.getUint32(p); p += 4; return v; };
+  const u16 = () => { const v = d.getUint16(p); p += 2; return v; };
+  const u8 = () => d.getUint8(p++);
+  const vlq = () => { let v = 0, b; do { b = u8(); v = (v << 7) | (b & 127); } while (b & 128); return v; };
+  if (str(4) !== "MThd") throw Error("not a MIDI file");
+  const hlen = u32(); u16(); const ntrk = u16(), div = u16();
+  if (div & 0x8000) throw Error("SMPTE timing not supported");
+  p += hlen - 6;
+  let tempo = 500000;
+  const raw = [];
+  for (let t = 0; t < ntrk; t++) {
+    if (str(4) !== "MTrk") throw Error("bad track");
+    const end = p + u32();
+    let tick = 0, status = 0;
+    const on = {};
+    while (p < end) {
+      tick += vlq();
+      let b = u8();
+      if (b < 0x80) { p--; b = status; } else status = b;
+      const type = b & 0xf0;
+      if (type === 0x90 || type === 0x80) {
+        const note = u8(), vel = u8();
+        if (type === 0x90 && vel > 0) { if (!(note in on)) on[note] = tick; }
+        else if (note in on) { raw.push({ midi: note, s: on[note], d: tick - on[note] }); delete on[note]; }
+      } else if (type === 0xA0 || type === 0xB0 || type === 0xE0) p += 2;
+      else if (type === 0xC0 || type === 0xD0) p += 1;
+      else if (b === 0xFF) {
+        const mt = u8(), l = vlq();
+        if (mt === 0x51) tempo = (d.getUint8(p) << 16) | (d.getUint8(p + 1) << 8) | d.getUint8(p + 2);
+        p += l;
+      } else if (b === 0xF0 || b === 0xF7) p += vlq();
+      else throw Error("unknown event 0x" + b.toString(16));
+    }
+    p = end;
+  }
+  if (!raw.length) throw Error("no notes found");
+  const out = raw.map(n => {
+    let m = n.midi; // fold outliers into the visible keyboard, octave by octave
+    while (m < LOW) m += 12;
+    while (m > HIGH) m -= 12;
+    return { midi: m, start: n.s / div, dur: Math.max(n.d / div, 0.15) };
+  }).sort((a, b) => a.start - b.start);
+  const t0 = out[0].start;
+  out.forEach(n => n.start -= t0);
+  return { notes: out, bpm: Math.min(180, Math.max(40, Math.round(60000000 / tempo))) };
+}
 
 /* ---------- player ---------- */
 const canvas = document.getElementById("canvas");
@@ -309,9 +414,9 @@ let playing = false, startTime = 0, pausedAt = 0, raf = 0;
 function speed() { return +document.getElementById("speed").value; }
 function secPerBeat() { return 60 / (song.bpm * speed()); }
 
-function openSong(i) {
-  song = SONGS[i];
-  notes = parseSong(song);
+function openSong(s) {
+  song = s;
+  notes = Array.isArray(s.notes) ? s.notes.map(n => ({ ...n })) : parseSong(s);
   songBeats = Math.max(...notes.map(n => n.start + n.dur));
   document.getElementById("songTitle").textContent = `${song.emoji} ${song.title}`;
   document.getElementById("library").classList.remove("active");
@@ -401,10 +506,16 @@ function draw(t) {
     const letter = NAMES[n.midi % 12][0];
     const isBlack = NAMES[n.midi % 12].includes("#");
     const x = lane.x * W + 2, w = lane.w * W - 4;
+    // gap at the top edge so back-to-back repeated notes read as separate bars
+    const gap = Math.min(8, (yBottom - yTop) * 0.25);
+    const top = Math.max(yTop + gap, -50), bot = Math.min(yBottom, H + 50);
     cx.fillStyle = isBlack ? "#e17055" : RAINBOW[letter];
+    cx.strokeStyle = "rgba(0,0,0,.4)";
+    cx.lineWidth = 2;
     cx.beginPath();
-    cx.roundRect(x, Math.max(yTop, -50), w, Math.min(yBottom, H + 50) - Math.max(yTop, -50), 8);
+    cx.roundRect(x, top, w, bot - top, 8);
     cx.fill();
+    cx.stroke();
     if (w > 22 && yBottom - yTop > 20) {
       cx.fillStyle = "rgba(0,0,0,.55)";
       cx.font = `bold ${Math.min(16, w * 0.5)}px sans-serif`;
