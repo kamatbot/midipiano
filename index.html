@@ -464,13 +464,14 @@ function resetPlayback() {
 playBtn.onclick = () => {
   audio().resume();
   if (playing) { // pause
-    pausedAt = audio().currentTime - startTime;
+    pausedAt = Math.max(0, audio().currentTime - startTime); // clamp: pausing mid-countdown restarts it
     playing = false;
     playBtn.textContent = "▶ Play";
     cancelAnimationFrame(raf);
   } else {
     if (pausedAt >= songDuration()) pausedAt = 0;
-    startTime = audio().currentTime - pausedAt;
+    const leadIn = pausedAt === 0 ? 3 : 0; // get-ready countdown at song start
+    startTime = audio().currentTime - pausedAt + leadIn;
     playing = true;
     playBtn.textContent = "⏸ Pause";
     tick();
@@ -547,6 +548,14 @@ function draw(t) {
       cx.textAlign = "center";
       cx.fillText(NAMES[n.midi % 12], x + w / 2, Math.min(yBottom, H) - 8);
     }
+  }
+  if (t < 0) { // countdown before the first note
+    cx.fillStyle = "rgba(255,255,255,.92)";
+    cx.textAlign = "center";
+    cx.font = `bold ${Math.min(48, H / 8)}px sans-serif`;
+    cx.fillText("Get ready!", W / 2, H / 2 - Math.min(70, H / 5));
+    cx.font = `bold ${Math.min(130, H / 3)}px sans-serif`;
+    cx.fillText(Math.ceil(-t), W / 2, H / 2 + Math.min(60, H / 6));
   }
 }
 
