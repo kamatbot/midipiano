@@ -313,8 +313,10 @@ function renderCards() {
   }
   const add = document.createElement("button");
   add.className = "card add";
-  add.innerHTML = `<div class="emoji">➕</div><h2>Add a song</h2><div class="meta">upload a .mid (MIDI) file</div>`;
+  add.innerHTML = `<div class="emoji">➕</div><h2>Add a song</h2><div class="meta">upload a .mid (MIDI) file</div>
+    <label class="meta"><input type="checkbox" id="melodyOnly" checked> melody only (top notes)</label>`;
   add.onclick = () => fileInput.click();
+  add.querySelector("label").onclick = e => e.stopPropagation(); // toggle without opening the picker
   cardsEl.appendChild(add);
 }
 renderCards();
@@ -326,6 +328,7 @@ fileInput.onchange = async () => {
   let parsed;
   try {
     parsed = parseMidi(await f.arrayBuffer());
+    if (document.getElementById("melodyOnly")?.checked) parsed.notes = melodyOnly(parsed.notes);
   } catch (e) {
     console.warn(e);
     return alert("Sorry, couldn't read that file. Please upload a standard MIDI (.mid) file.");
@@ -334,7 +337,7 @@ fileInput.onchange = async () => {
     const res = await fetch("/api/songs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: f.name.replace(/\.midi?$/i, ""), bpm: parsed.bpm, notes: parsed.notes }),
+      body: JSON.stringify({ title: f.name.replace(/\.midi?\s*$/i, "").trim(), bpm: parsed.bpm, notes: parsed.notes }),
     });
     if (!res.ok) throw Error("save failed: " + res.status);
     const saved = await res.json();
@@ -346,6 +349,23 @@ fileInput.onchange = async () => {
     alert("The song was read, but saving it to the shared library failed. Please try again.");
   }
 };
+
+/* skyline melody extraction: keep the top sounding note, trim lower ones when a higher note starts */
+/* ponytail: O(n²) scan — fine for <5000 notes, sweep-line if uploads ever feel slow */
+function melodyOnly(notes) {
+  const kept = notes.filter(n =>
+    !notes.some(o => o.midi > n.midi && o.start <= n.start + 1e-6 && o.start + o.dur > n.start + 1e-6));
+  kept.sort((a, b) => a.start - b.start);
+  for (let i = 0; i < kept.length; i++) {
+    const n = kept[i];
+    for (let j = i + 1; j < kept.length; j++) {
+      const o = kept[j];
+      if (o.start >= n.start + n.dur) break;
+      if (o.midi > n.midi) { n.dur = Math.max(o.start - n.start, 0.15); break; }
+    }
+  }
+  return kept;
+}
 
 /* ---------- minimal Standard MIDI File parser ---------- */
 /* ponytail: melody+chords import as-is (no per-track picking); add a track chooser if uploads get too busy */
