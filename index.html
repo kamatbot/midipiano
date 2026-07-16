@@ -421,8 +421,13 @@ fileInput.onchange = async () => {
     renderForYou();
     openSong(saved);
   } catch (e) {
-    console.warn(e);
-    alert("The song was read, but saving it to the shared library failed. Please try again.");
+    // static hosting (e.g. GitHub Pages) has no API — keep the song for this visit
+    console.warn("shared save failed, keeping song locally:", e);
+    const local = { title: f.name.replace(/\.midi?\s*$/i, "").trim(), emoji: "🎵", bpm: parsed.bpm, notes: parsed.notes, custom: true };
+    if (!customSongs.some(c => c.title === local.title)) customSongs.push(local);
+    renderCards();
+    renderForYou();
+    openSong(local);
   }
 };
 
@@ -778,15 +783,21 @@ function drawSheet(sf) { // sf = step index, fractional while the scroll animate
         cx.fillText("♯", x - r * 1.5, hy);
       }
     }
-    // letter hint on a fixed row under the staves
-    const lbl = [...new Set(steps[i].notes.map(n => {
-      const inf = noteInfo(n.midi);
-      return inf.letter + (inf.sharp ? "♯" : "");
-    }))].join(" ");
-    cx.fillStyle = stepColor;
-    cx.font = `bold ${Math.max(11, g * (isCur ? 1.2 : 0.9))}px sans-serif`;
-    cx.textAlign = "center";
-    cx.fillText(lbl, x, yOf(16) + g);
+    // letter hint on a fixed row under the staves — training wheels come off as levels rise:
+    // levels 0-1 label every note, 2-3 only the current one, 4+ none
+    const hintLvl = testing ? TEST_STAGES[testStage].level
+      : lesson !== null ? LESSONS[lesson].level
+      : (userLevel() ?? 1);
+    if (hintLvl <= 1 || (isCur && hintLvl <= 3)) {
+      const lbl = [...new Set(steps[i].notes.map(n => {
+        const inf = noteInfo(n.midi);
+        return inf.letter + (inf.sharp ? "♯" : "");
+      }))].join(" ");
+      cx.fillStyle = stepColor;
+      cx.font = `bold ${Math.max(11, g * (isCur ? 1.2 : 0.9))}px sans-serif`;
+      cx.textAlign = "center";
+      cx.fillText(lbl, x, yOf(16) + g);
+    }
   }
   cx.textBaseline = "alphabetic"; // restore the canvas default for the falling-notes view
 }
