@@ -23,6 +23,25 @@
     text-shadow: 0 3px 0 rgba(0,0,0,.2); margin-bottom: 4px;
   }
   #library p.sub { text-align: center; color: rgba(255,255,255,.9); margin-bottom: 20px; font-size: 1.1rem; }
+  #library h2.section {
+    color: #fff; font-size: 1.35rem; max-width: 1100px;
+    margin: 22px auto 12px; text-shadow: 0 2px 0 rgba(0,0,0,.2);
+  }
+  .level-head {
+    grid-column: 1 / -1; color: #fff; font-size: 1.05rem;
+    margin-top: 8px; text-shadow: 0 2px 0 rgba(0,0,0,.2);
+  }
+  .level-head .star { color: #ffeaa7; }
+  #genreChips {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    max-width: 1100px; margin: 0 auto 14px;
+  }
+  .chip {
+    font-family: inherit; font-size: .95rem; cursor: pointer;
+    border: 2px solid #fff; border-radius: 999px; padding: 8px 14px;
+    background: transparent; color: #fff;
+  }
+  .chip.on { background: #fff; color: #6c5ce7; }
   .cards {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
     gap: 16px; max-width: 1100px; margin: 0 auto; padding-bottom: 40px;
@@ -60,6 +79,15 @@
     font-family: inherit; font-size: 1rem; border: none; border-radius: 12px;
     padding: 9px 10px; background: #6c5ce7; color: #fff; cursor: pointer;
   }
+  .btn.mode { background: #6c5ce7; }
+  .btn.mic { background: #636e72; }
+  .btn.mic.on { background: #d63031; animation: micPulse 1.2s infinite; }
+  @keyframes micPulse { 50% { box-shadow: 0 4px 0 rgba(0,0,0,.3), 0 0 16px #ff7675; } }
+  #progress { color: #ffeaa7; font-size: 1.05rem; min-width: 70px; text-align: center; }
+  #lessonTip {
+    background: rgba(255,255,255,.14); color: #fff; text-align: center;
+    padding: 8px 16px; font-size: 1.05rem;
+  }
   #canvas { flex: 1; min-height: 0; width: 100%; display: block; }
   #keyboard {
     position: relative; height: 26vh; min-height: 150px;
@@ -76,6 +104,11 @@
     box-shadow: 0 3px 0 rgba(0,0,0,.4);
   }
   .key-black.lit { background: var(--lit, #e17055); }
+  .key-white.target { background: var(--lit, #ffeaa7); animation: pulseKey .9s ease-in-out infinite; }
+  .key-black.target { background: #e17055; animation: pulseKey .9s ease-in-out infinite; }
+  @keyframes pulseKey { 50% { filter: brightness(1.5); } }
+  .key-white.wrong { background: #ff7675 !important; }
+  .key-black.wrong { background: #d63031 !important; }
   .key-label {
     position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
     font-size: .85rem; color: #636e72; pointer-events: none;
@@ -86,6 +119,21 @@
   }
   #done.show { display: flex; }
   #done .big { font-size: 3rem; }
+  #modePick {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px; background: rgba(30,30,47,.94); z-index: 20; color: #fff;
+    padding: 24px; text-align: center;
+  }
+  #modePick.show { display: flex; }
+  #modePick h2 { font-size: 1.5rem; }
+  .mode-btn {
+    font-family: inherit; width: min(440px, 92%); background: #fff; color: #2d3436; border: none;
+    border-radius: 20px; padding: 16px 20px; font-size: 1rem; cursor: pointer;
+    box-shadow: 0 6px 0 rgba(0,0,0,.3); text-align: left; transition: transform .08s;
+  }
+  .mode-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+  .mode-btn .big { font-size: 1.25rem; display: block; margin-bottom: 4px; }
+  .mode-btn small { color: #636e72; }
 </style>
 </head>
 <body>
@@ -93,7 +141,13 @@
 <!-- ================= LIBRARY ================= -->
 <div id="library" class="screen active">
   <h1>🎹 Mini Piano</h1>
-  <p class="sub">Pick a song and play along — the falling notes show you which keys to press!</p>
+  <p class="sub">Learn piano step by step, or pick a song and play along!</p>
+  <h2 class="section">🎓 Learn piano</h2>
+  <div class="cards" id="lessonCards"></div>
+  <h2 class="section">🎁 Songs for you</h2>
+  <div id="genreChips"></div>
+  <div class="cards" id="forYouCards"></div>
+  <h2 class="section">🎵 All songs</h2>
   <div class="cards" id="cards"></div>
   <input type="file" id="midiFile" accept=".mid,.midi" hidden>
 </div>
@@ -103,6 +157,9 @@
   <div id="topbar">
     <button class="btn back" id="backBtn">⬅ Songs</button>
     <span class="title" id="songTitle"></span>
+    <span id="progress" hidden></span>
+    <button class="btn mic" id="micBtn" hidden>🎤 Listen</button>
+    <button class="btn mode" id="modeBtn" title="Change mode">🌊</button>
     <select id="speed" title="Speed">
       <option value="0.5">🐢 Slow</option>
       <option value="0.75">🚶 Easy</option>
@@ -111,12 +168,28 @@
     <button class="btn restart" id="restartBtn">🔄</button>
     <button class="btn play" id="playBtn">▶ Play</button>
   </div>
+  <div id="lessonTip" hidden></div>
   <canvas id="canvas"></canvas>
   <div id="keyboard"></div>
   <div id="done">
     <div class="big">🌟🎉🌟</div>
-    <div style="font-size:1.6rem">Great job!</div>
+    <div style="font-size:1.6rem" id="doneMsg">Great job!</div>
     <button class="btn play" id="againBtn">Play again</button>
+    <button class="btn restart" id="nextBtn" hidden>Next lesson ➡</button>
+    <button class="btn back" id="doneBackBtn">⬅ Back to songs</button>
+  </div>
+  <div id="modePick">
+    <h2 id="modeSongName"></h2>
+    <p>How do you want to play?</p>
+    <button class="mode-btn" id="modeFall">
+      <span class="big">🌊 Falling notes</span>
+      <small>Watch and listen — the app plays the song while the notes rain down. Play along!</small>
+    </button>
+    <button class="mode-btn" id="modeLearn">
+      <span class="big">🪜 Step by step</span>
+      <small>Read real sheet music at your own pace — the song waits until you play the right key. Turn on 🎤 Listen to use your real piano!</small>
+    </button>
+    <button class="btn back" id="modeBack">⬅ Songs</button>
   </div>
 </div>
 
@@ -130,38 +203,38 @@
    To add a song, just push another object onto SONGS.
    ========================================================= */
 const SONGS = [
-  { title: "Twinkle Twinkle Little Star", emoji: "⭐", bpm: 100, stars: 1, notes:
+  { title: "Twinkle Twinkle Little Star", emoji: "⭐", bpm: 100, stars: 1, genre: "nursery", notes:
     "C4/1 C4/1 G4/1 G4/1 A4/1 A4/1 G4/2 F4/1 F4/1 E4/1 E4/1 D4/1 D4/1 C4/2 " +
     "G4/1 G4/1 F4/1 F4/1 E4/1 E4/1 D4/2 G4/1 G4/1 F4/1 F4/1 E4/1 E4/1 D4/2 " +
     "C4/1 C4/1 G4/1 G4/1 A4/1 A4/1 G4/2 F4/1 F4/1 E4/1 E4/1 D4/1 D4/1 C4/2" },
-  { title: "Mary Had a Little Lamb", emoji: "🐑", bpm: 110, stars: 1, notes:
+  { title: "Mary Had a Little Lamb", emoji: "🐑", bpm: 110, stars: 1, genre: "nursery", notes:
     "E4/1 D4/1 C4/1 D4/1 E4/1 E4/1 E4/2 D4/1 D4/1 D4/2 E4/1 G4/1 G4/2 " +
     "E4/1 D4/1 C4/1 D4/1 E4/1 E4/1 E4/1 E4/1 D4/1 D4/1 E4/1 D4/1 C4/4" },
-  { title: "Hot Cross Buns", emoji: "🥐", bpm: 100, stars: 1, notes:
+  { title: "Hot Cross Buns", emoji: "🥐", bpm: 100, stars: 1, genre: "nursery", notes:
     "E4/1 D4/1 C4/2 E4/1 D4/1 C4/2 " +
     "C4/.5 C4/.5 C4/.5 C4/.5 D4/.5 D4/.5 D4/.5 D4/.5 E4/1 D4/1 C4/2" },
-  { title: "Row Row Row Your Boat", emoji: "🚣", bpm: 100, stars: 1, notes:
+  { title: "Row Row Row Your Boat", emoji: "🚣", bpm: 100, stars: 1, genre: "nursery", notes:
     "C4/1 C4/1 C4/.75 D4/.25 E4/1 E4/.75 D4/.25 E4/.75 F4/.25 G4/2 " +
     "C5/.33 C5/.33 C5/.34 G4/.33 G4/.33 G4/.34 E4/.33 E4/.33 E4/.34 C4/.33 C4/.33 C4/.34 " +
     "G4/.75 F4/.25 E4/.75 D4/.25 C4/2" },
-  { title: "London Bridge", emoji: "🌉", bpm: 110, stars: 1, notes:
+  { title: "London Bridge", emoji: "🌉", bpm: 110, stars: 1, genre: "nursery", notes:
     "G4/1.5 A4/.5 G4/1 F4/1 E4/1 F4/1 G4/2 D4/1 E4/1 F4/2 E4/1 F4/1 G4/2 " +
     "G4/1.5 A4/.5 G4/1 F4/1 E4/1 F4/1 G4/2 D4/2 G4/2 E4/1 C4/3" },
-  { title: "Old MacDonald", emoji: "🐄", bpm: 110, stars: 2, notes:
+  { title: "Old MacDonald", emoji: "🐄", bpm: 110, stars: 2, genre: "nursery", notes:
     "C4/1 C4/1 C4/1 G3/1 A3/1 A3/1 G3/2 E4/1 E4/1 D4/1 D4/1 C4/3 G3/1 " +
     "C4/1 C4/1 C4/1 G3/1 A3/1 A3/1 G3/2 E4/1 E4/1 D4/1 D4/1 C4/4" },
-  { title: "Happy Birthday", emoji: "🎂", bpm: 110, stars: 2, notes:
+  { title: "Happy Birthday", emoji: "🎂", bpm: 110, stars: 2, genre: "party", notes:
     "G4/.75 G4/.25 A4/1 G4/1 C5/1 B4/2 G4/.75 G4/.25 A4/1 G4/1 D5/1 C5/2 " +
     "G4/.75 G4/.25 G5/1 E5/1 C5/1 B4/1 A4/2 F5/.75 F5/.25 E5/1 C5/1 D5/1 C5/2" },
-  { title: "Jingle Bells", emoji: "🔔", bpm: 130, stars: 2, notes:
+  { title: "Jingle Bells", emoji: "🔔", bpm: 130, stars: 2, genre: "party", notes:
     "E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/.5 E4/4 " +
     "F4/1 F4/1 F4/1.5 F4/.5 F4/1 E4/1 E4/1 E4/.5 E4/.5 E4/1 D4/1 D4/1 E4/1 D4/2 G4/2 " +
     "E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/.5 E4/4 " +
     "F4/1 F4/1 F4/1.5 F4/.5 F4/1 E4/1 E4/1 E4/.5 E4/.5 G4/1 G4/1 F4/1 D4/1 C4/4" },
-  { title: "Ode to Joy", emoji: "🎻", bpm: 120, stars: 2, notes:
+  { title: "Ode to Joy", emoji: "🎻", bpm: 120, stars: 2, genre: "classical", notes:
     "E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 E4/1.5 D4/.5 D4/2 " +
     "E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 D4/1.5 C4/.5 C4/2" },
-  { title: "Für Elise (opening)", emoji: "🎩", bpm: 120, stars: 3, notes:
+  { title: "Für Elise (opening)", emoji: "🎩", bpm: 120, stars: 3, genre: "classical", notes:
     "E5/.5 Eb5/.5 E5/.5 Eb5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 r/.5 " +
     "C4/.5 E4/.5 A4/.5 B4/1.5 r/.5 E4/.5 Ab4/.5 B4/.5 C5/1.5 r/.5 " +
     "E4/.5 E5/.5 Eb5/.5 E5/.5 Eb5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 r/.5 " +
@@ -258,6 +331,7 @@ function pressFromEvent(e) {
   activePointers[e.pointerId] = m;
   playNote(m, 0.4);
   flash(el);
+  userPlayed(m);
 }
 window.addEventListener("pointerup", e => delete activePointers[e.pointerId]);
 function flash(el) {
@@ -283,6 +357,7 @@ window.addEventListener("keydown", e => {
   heldKeys.add(e.key);
   playNote(m, 0.4);
   if (keyEls[m]) flash(keyEls[m]);
+  userPlayed(m);
 });
 window.addEventListener("keyup", e => heldKeys.delete(e.key));
 
@@ -291,7 +366,7 @@ const cardsEl = document.getElementById("cards");
 const fileInput = document.getElementById("midiFile");
 let customSongs = []; // shared library, served by server.js
 fetch("/api/songs").then(r => r.json())
-  .then(s => { customSongs = s; renderCards(); })
+  .then(s => { customSongs = s; renderCards(); renderForYou(); })
   .catch(() => {}); // offline / static hosting: built-ins only
 
 function renderCards() {
@@ -343,6 +418,7 @@ fileInput.onchange = async () => {
     const saved = await res.json();
     if (!customSongs.some(c => c.title === saved.title)) customSongs.push(saved);
     renderCards();
+    renderForYou();
     openSong(saved);
   } catch (e) {
     console.warn(e);
@@ -439,16 +515,24 @@ let playing = false, startTime = 0, pausedAt = 0, raf = 0;
 function speed() { return +document.getElementById("speed").value; }
 function secPerBeat() { return 60 / (song.bpm * speed()); }
 
-function openSong(s) {
+function enterPlayer(s) {
   song = s;
   notes = Array.isArray(s.notes) ? s.notes.map(n => ({ ...n })) : parseSong(s);
-  songBeats = Math.max(...notes.map(n => n.start + n.dur));
+  songBeats = notes.length ? Math.max(...notes.map(n => n.start + n.dur)) : 0;
   document.getElementById("songTitle").textContent = `${song.emoji} ${song.title}`;
   document.getElementById("library").classList.remove("active");
   document.getElementById("player").classList.add("active");
-  resetPlayback();
   resize();
-  draw(0);
+}
+
+function openSong(s) {
+  lesson = null;
+  enterPlayer(s);
+  showModePicker();
+}
+
+function clearKeys() {
+  Object.values(keyEls).forEach(el => { el.classList.remove("lit", "target", "wrong"); delete el.dataset.hold; });
 }
 
 function resetPlayback() {
@@ -457,7 +541,7 @@ function resetPlayback() {
   doneEl.classList.remove("show");
   cancelAnimationFrame(raf);
   notes.forEach(n => n.played = false);
-  Object.values(keyEls).forEach(el => { el.classList.remove("lit"); delete el.dataset.hold; });
+  clearKeys();
   draw(0);
 }
 
@@ -477,14 +561,313 @@ playBtn.onclick = () => {
     tick();
   }
 };
-document.getElementById("restartBtn").onclick = resetPlayback;
-document.getElementById("againBtn").onclick = () => { resetPlayback(); playBtn.click(); };
-document.getElementById("backBtn").onclick = () => {
+function restart() {
+  doneEl.classList.remove("show");
+  if (mode === "learn") startLearn(); else resetPlayback();
+}
+const restartBtn = document.getElementById("restartBtn");
+restartBtn.onclick = restart;
+document.getElementById("againBtn").onclick = () => { restart(); if (mode === "fall") playBtn.click(); };
+function goToLibrary() {
+  testing = false;
+  stopMic();
+  stopLearn();
   resetPlayback();
+  modePick.classList.remove("show");
   document.getElementById("player").classList.remove("active");
   document.getElementById("library").classList.add("active");
+}
+document.getElementById("backBtn").onclick = goToLibrary;
+document.getElementById("modeBack").onclick = goToLibrary;
+document.getElementById("doneBackBtn").onclick = goToLibrary;
+document.getElementById("speed").onchange = () => { if (song && mode === "fall") resetPlayback(); };
+
+/* ---------- mode picker ---------- */
+const modePick = document.getElementById("modePick");
+const modeBtn = document.getElementById("modeBtn");
+const micBtn = document.getElementById("micBtn");
+const progressEl = document.getElementById("progress");
+const speedSel = document.getElementById("speed");
+const lessonTip = document.getElementById("lessonTip");
+let mode = "fall";
+let lesson = null; // index into LESSONS, or null when playing a song / free play
+
+function showModePicker() {
+  stopLearn();
+  resetPlayback();
+  document.getElementById("modeSongName").textContent = `${song.emoji} ${song.title}`;
+  modePick.classList.add("show");
+}
+modeBtn.onclick = showModePicker;
+document.getElementById("modeFall").onclick = () => startMode("fall");
+document.getElementById("modeLearn").onclick = () => startMode("learn");
+
+function startMode(m) {
+  mode = m;
+  modePick.classList.remove("show");
+  const learn = m === "learn";
+  modeBtn.textContent = learn ? "🪜" : "🌊";
+  modeBtn.hidden = lesson !== null || m === "free"; // lessons and free play have one fixed mode
+  micBtn.hidden = !learn;
+  progressEl.hidden = !learn;
+  playBtn.hidden = m !== "fall";
+  restartBtn.hidden = m === "free";
+  speedSel.hidden = m !== "fall";
+  lessonTip.hidden = !(learn && (lesson !== null || testing));
+  audio().resume(); // user gesture: unlock audio for iPad
+  if (learn) startLearn();
+  else { stopMic(); stopLearn(); resetPlayback(); }
+}
+
+/* ---------- learn (step-by-step) mode ---------- */
+let steps = [], stepIdx = 0, remaining = new Set(), learnT = 0, learnAnim = 0;
+
+function startLearn() {
+  cancelAnimationFrame(raf);
+  playing = false;
+  doneEl.classList.remove("show");
+  notes.forEach(n => n.played = false);
+  clearKeys();
+  steps = [];
+  for (const n of [...notes].sort((a, b) => a.start - b.start)) {
+    const last = steps[steps.length - 1];
+    if (last && n.start - last.start < 0.02) last.notes.push(n); // same start = chord = one step
+    else steps.push({ start: n.start, notes: [n] });
+  }
+  stepIdx = 0;
+  setStep(true);
+}
+
+function stopLearn() {
+  cancelAnimationFrame(learnAnim);
+  steps = [];
+  remaining = new Set();
+  progressEl.textContent = "";
+}
+
+function setStep(jump) {
+  const step = steps[stepIdx];
+  remaining = new Set(step.notes.map(n => n.midi));
+  for (const m of remaining) keyEls[m]?.classList.add("target");
+  progressEl.textContent = `${stepIdx + 1} / ${steps.length}`;
+  scrollLearnTo(stepIdx, jump); // learnT counts steps: the sheet view scrolls one column per step
+}
+
+function scrollLearnTo(target, jump) {
+  cancelAnimationFrame(learnAnim);
+  if (jump) { learnT = target; return draw(learnT); }
+  const from = learnT, t0 = performance.now();
+  const anim = now => {
+    const k = Math.min((now - t0) / 250, 1);
+    learnT = from + (target - from) * (k * (2 - k)); // ease-out
+    draw(learnT);
+    if (k < 1) learnAnim = requestAnimationFrame(anim);
+  };
+  learnAnim = requestAnimationFrame(anim);
+}
+
+function userPlayed(midi, viaMic = false) {
+  if (mode !== "learn" || !steps.length || doneEl.classList.contains("show") ||
+      modePick.classList.contains("show")) return;
+  let hit = null;
+  if (remaining.has(midi)) hit = midi;
+  else if (viaMic) { // pitch detectors often slip an octave — accept the note by name
+    for (const m of remaining) if ((m - midi) % 12 === 0) { hit = m; break; }
+  }
+  if (hit === null) {
+    if (!viaMic) { // gentle "not this one" nudge; ignore stray mic noise
+      if (testing && ++testWrongs >= 4) return finishTest(TEST_STAGES[testStage].level);
+      const el = keyEls[midi];
+      if (el) {
+        el.classList.add("wrong");
+        setTimeout(() => el.classList.remove("wrong"), 300);
+      }
+    }
+    return;
+  }
+  remaining.delete(hit);
+  const el = keyEls[hit];
+  if (el) {
+    el.classList.remove("target");
+    el.classList.add("lit");
+    setTimeout(() => { if (!remaining.has(hit)) el.classList.remove("lit"); }, 350);
+  }
+  if (viaMic) playNote(hit, 0.15); // soft confirmation chime; taps already made their own sound
+  const step = steps[stepIdx];
+  step.notes.forEach(n => { if (n.midi === hit) n.played = true; });
+  draw(learnT);
+  if (remaining.size) return;
+  stepIdx++;
+  if (stepIdx >= steps.length) {
+    if (testing) return nextTestStage();
+    progressEl.textContent = "🎉";
+    if (lesson !== null) markLessonDone(lesson);
+    updateDoneUI();
+    doneEl.classList.add("show");
+  } else setStep(false);
+}
+
+/* ---------- sheet-music rendering (learn mode) ---------- */
+const DIA = { C: 0, D: 1, E: 2, F: 3, G: 4, A: 5, B: 6 };
+function noteInfo(midi) { // p = diatonic position; C4 = 28, each staff line/space = 1
+  const name = NAMES[midi % 12];
+  return { letter: name[0], sharp: name.length > 1, p: (Math.floor(midi / 12) - 1) * 7 + DIA[name[0]] };
+}
+
+function drawSheet(sf) { // sf = step index, fractional while the scroll animates
+  const W = canvas.width, H = canvas.height;
+  cx.clearRect(0, 0, W, H);
+  const px = 10, py = 10, pw = W - 20, ph = H - 20;
+  cx.fillStyle = "#fffdf7";
+  cx.beginPath(); cx.roundRect(px, py, pw, ph, 16); cx.fill();
+  const g = Math.max(8, Math.min(17 * devicePixelRatio, (ph / 2 - 16) / 7)); // staff line gap
+  const yOf = p => py + ph / 2 - g + (30 - p) * g / 2;    // middle C at the vertical center
+  const SP = Math.max(60, g * 4.2);                       // horizontal px per step
+  const headX = px + g * 6.5;                             // the "play me" column, right of the clefs
+  cx.fillStyle = "rgba(253,203,110,.45)";
+  cx.beginPath(); cx.roundRect(headX - g * 1.7, py + 8, g * 3.4, ph - 16, 10); cx.fill();
+  // staff lines: treble E4..F5 (p 30..38), bass G2..A3 (p 18..26)
+  cx.strokeStyle = "#636e72"; cx.lineWidth = 1.5;
+  for (const base of [30, 18]) for (let p = base; p <= base + 8; p += 2) {
+    const ly = yOf(p);
+    cx.beginPath(); cx.moveTo(px + 14, ly); cx.lineTo(px + pw - 14, ly); cx.stroke();
+  }
+  cx.fillStyle = "#2d3436"; cx.textAlign = "left"; cx.textBaseline = "middle";
+  cx.font = `${g * 4.4}px serif`; cx.fillText("𝄞", px + 18, yOf(34));
+  cx.font = `${g * 3.2}px serif`; cx.fillText("𝄢", px + 18, yOf(23));
+  for (let i = 0; i < steps.length; i++) {
+    const x = headX + (i - sf) * SP;
+    if (x < headX - g * 1.8 || x > px + pw - g * 2) continue; // past notes scroll out at the play column
+    const isCur = i === stepIdx;
+    const stepColor = i < stepIdx ? "#b2bec3" : isCur ? "#e17055" : "#2d3436";
+    for (const n of steps[i].notes) {
+      const { sharp, p } = noteInfo(n.midi);
+      const hy = yOf(p), r = g * 0.55;
+      const color = i < stepIdx || n.played ? "#b2bec3" : stepColor;
+      cx.strokeStyle = color; cx.fillStyle = color;
+      // ledger lines
+      const led = [];
+      if (p >= 40) for (let q = 40; q <= p; q += 2) led.push(q);
+      else if (p === 27 || p === 28) led.push(28);
+      else if (p <= 16) for (let q = 16; q >= p; q -= 2) led.push(q);
+      cx.lineWidth = 1.5;
+      for (const q of led) {
+        const ly = yOf(q);
+        cx.beginPath(); cx.moveTo(x - r * 1.9, ly); cx.lineTo(x + r * 1.9, ly); cx.stroke();
+      }
+      // note head: filled = quarter, hollow = half, hollow w/o stem = whole
+      const whole = n.dur >= 3.5, hollow = n.dur >= 1.5;
+      cx.lineWidth = 2.2;
+      cx.beginPath();
+      cx.ellipse(x, hy, r * 1.2, r * 0.85, -0.35, 0, Math.PI * 2);
+      hollow ? cx.stroke() : cx.fill();
+      if (!whole) { // stem, plus a flag for eighth notes
+        const up = p < (p >= 27 ? 34 : 22); // below the staff's middle line → stem up
+        const sx = up ? x + r * 1.1 : x - r * 1.1;
+        const sy = hy + (up ? -2.9 * g : 2.9 * g);
+        cx.lineWidth = 1.8;
+        cx.beginPath(); cx.moveTo(sx, hy); cx.lineTo(sx, sy); cx.stroke();
+        if (n.dur <= 0.5) {
+          cx.beginPath(); cx.moveTo(sx, sy);
+          cx.quadraticCurveTo(sx + g * 0.9, sy + (up ? g * 0.8 : -g * 0.8), sx + g * 0.5, sy + (up ? g * 1.7 : -g * 1.7));
+          cx.stroke();
+        }
+      }
+      if (sharp) {
+        cx.font = `bold ${g * 1.6}px serif`; cx.textAlign = "right";
+        cx.fillText("♯", x - r * 1.5, hy);
+      }
+    }
+    // letter hint on a fixed row under the staves
+    const lbl = [...new Set(steps[i].notes.map(n => {
+      const inf = noteInfo(n.midi);
+      return inf.letter + (inf.sharp ? "♯" : "");
+    }))].join(" ");
+    cx.fillStyle = stepColor;
+    cx.font = `bold ${Math.max(11, g * (isCur ? 1.2 : 0.9))}px sans-serif`;
+    cx.textAlign = "center";
+    cx.fillText(lbl, x, yOf(16) + g);
+  }
+  cx.textBaseline = "alphabetic"; // restore the canvas default for the falling-notes view
+}
+
+/* ---------- microphone listening (learn mode) ---------- */
+let micStream = null, micNode = null, micRaf = 0, micBuf = null;
+let micStable = { midi: 0, count: 0, last: 0 };
+
+micBtn.onclick = async () => {
+  if (micStream) return stopMic();
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (e) {
+    console.warn(e);
+    return alert("Couldn't turn on the microphone. Please allow mic access in your browser settings (the mic only works over https or localhost).");
+  }
+  const ctx = audio();
+  ctx.resume();
+  micNode = ctx.createAnalyser();
+  micNode.fftSize = 2048;
+  ctx.createMediaStreamSource(micStream).connect(micNode);
+  micBuf = new Float32Array(micNode.fftSize);
+  micStable = { midi: 0, count: 0, last: 0 };
+  micBtn.classList.add("on");
+  micBtn.textContent = "🎤 Listening…";
+  micLoop();
 };
-document.getElementById("speed").onchange = () => { if (song) resetPlayback(); };
+
+function stopMic() {
+  cancelAnimationFrame(micRaf);
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  micStream = micNode = null;
+  micBtn.classList.remove("on");
+  micBtn.textContent = "🎤 Listen";
+}
+
+let micFrame = 0;
+function micLoop() {
+  if (!micNode) return;
+  micRaf = requestAnimationFrame(micLoop);
+  if (micFrame++ % 2) return; // autocorrelation is O(n²) — every other frame is plenty
+  micNode.getFloatTimeDomainData(micBuf);
+  const freq = detectPitch(micBuf, audio().sampleRate);
+  if (freq < 0) { micStable.count = 0; micStable.last = 0; return; } // silence re-arms repeated notes
+  const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+  if (midi === micStable.midi) micStable.count++;
+  else { micStable.midi = midi; micStable.count = 1; }
+  if (micStable.count === 3 && midi !== micStable.last) { // ~50ms of steady pitch = a real note
+    micStable.last = midi;
+    userPlayed(midi, true);
+  }
+}
+
+/* autocorrelation pitch detector (time domain, good enough for single piano notes) */
+function detectPitch(buf, sampleRate) {
+  const SIZE = buf.length;
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+  if (Math.sqrt(rms / SIZE) < 0.015) return -1; // too quiet
+  // trim quiet edges so the correlation sees the meat of the waveform
+  let r1 = 0, r2 = SIZE - 1;
+  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < 0.2) { r1 = i; break; }
+  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < 0.2) { r2 = SIZE - i; break; }
+  const b = buf.slice(r1, r2), N = b.length;
+  const c = new Float32Array(N);
+  for (let lag = 0; lag < N; lag++)
+    for (let i = 0; i < N - lag; i++) c[lag] += b[i] * b[i + lag];
+  let d = 0;
+  while (d < N - 1 && c[d] > c[d + 1]) d++;
+  let maxpos = -1, maxval = -1;
+  for (let i = d; i < N; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
+  if (maxpos <= 0) return -1;
+  let T = maxpos; // parabolic interpolation refines the peak between samples
+  const x1 = c[T - 1], x2 = c[T], x3 = T + 1 < N ? c[T + 1] : 0;
+  const a = (x1 + x3 - 2 * x2) / 2, bq = (x3 - x1) / 2;
+  if (a) T -= bq / (2 * a);
+  const freq = sampleRate / T;
+  return freq > 60 && freq < 2500 ? freq : -1; // piano-ish range only
+}
 
 function songDuration() { return songBeats * secPerBeat() + 0.5; }
 
@@ -510,6 +893,7 @@ function tick() {
   if (t > songDuration()) {
     playing = false;
     playBtn.textContent = "▶ Play";
+    updateDoneUI();
     doneEl.classList.add("show");
     return;
   }
@@ -517,6 +901,7 @@ function tick() {
 }
 
 function draw(t) {
+  if (mode === "learn") return drawSheet(t);
   const W = canvas.width, H = canvas.height;
   cx.clearRect(0, 0, W, H);
   // hit line
@@ -565,12 +950,272 @@ function resize() {
   cx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   // draw() uses canvas.width/height directly, so undo the transform scale:
   cx.setTransform(1, 0, 0, 1, 0, 0);
-  if (song && !playing) draw(pausedAt);
+  if (song && !playing) draw(mode === "learn" ? learnT : pausedAt);
 }
 window.addEventListener("resize", resize);
 
-/* self-check: song data parses and stays inside the visible keyboard */
-console.assert(SONGS.every(s => parseSong(s).every(n => n.midi >= LOW && n.midi <= HIGH)),
+/* ---------- lessons: learn piano properly, one small step at a time ---------- */
+const LEVELS = [
+  { emoji: "🐣", name: "First steps" },
+  { emoji: "🌱", name: "Beginner" },
+  { emoji: "🎼", name: "Note reader" },
+  { emoji: "🎵", name: "Song player" },
+  { emoji: "🚀", name: "Advanced" },
+];
+const LESSONS = [
+  // --- level 0: first steps ---
+  { id: "hello-c", level: 0, emoji: "🐣", title: "Say hello: one note", notes: "C4/2",
+    tip: "This is middle C — the piano's home key. Give it one friendly tap!" },
+  { id: "low-high", level: 0, emoji: "🐘", title: "Low and high", notes: "C3/1 C3/1 C5/1 C5/1",
+    tip: "Keys on the left sound LOW like an elephant. Keys on the right sound HIGH like a bird! Two low, two high." },
+  { id: "c-and-d", level: 0, emoji: "👯", title: "Two friends: C and D", notes: "C4/1 D4/1 C4/1 D4/1",
+    tip: "C and D live right next to each other. Say hi to both — back and forth!" },
+  { id: "copy-pattern", level: 0, emoji: "🪞", title: "Copy the pattern", notes: "C4/1 C4/1 D4/1 D4/1 C4/2",
+    tip: "Music is made of patterns! Copy this one: C, C, D, D, C." },
+  // --- level 1: beginner ---
+  { id: "find-c", level: 1, emoji: "🎯", title: "Find Middle C", notes: "C4/1 C4/1 C4/1",
+    tip: "Middle C is the white key just LEFT of the two black keys in the middle of the piano. Play it three times!" },
+  { id: "cde", level: 1, emoji: "🐛", title: "Step up: C D E", notes: "C4/1 D4/1 E4/1 D4/1 C4/1",
+    tip: "Thumb on C, pointer finger on D, middle finger on E. Walk up the steps… and back down!" },
+  { id: "five-finger", level: 1, emoji: "🖐️", title: "Five-finger hand: C to G", notes: "C4/1 D4/1 E4/1 F4/1 G4/1 F4/1 E4/1 D4/1 C4/1",
+    tip: "One finger per key — thumb on C, pinky on G. Climb your whole hand up and down!" },
+  { id: "down-gc", level: 1, emoji: "🎈", title: "Coming down: G to C", notes: "G4/1 F4/1 E4/1 D4/1 C4/1 D4/1 E4/1 F4/1 G4/2",
+    tip: "Melodies fall as often as they rise! Float down from G to C, then bounce back up." },
+  { id: "skips", level: 1, emoji: "🦘", title: "Skips and jumps", notes: "C4/1 E4/1 G4/1 E4/1 C4/1 E4/1 G4/2",
+    tip: "Now skip a key: C to E, E to G. Jumps like these are how melodies get exciting!" },
+  // --- level 2: note reader ---
+  { id: "lines", level: 2, emoji: "🎼", title: "Line notes: E G B D F", notes: "E4/1 G4/1 B4/1 D5/1 F5/1",
+    tip: "These notes sit ON the staff lines: Every Good Boy Does Fine. Higher on the paper = further right on the piano!" },
+  { id: "spaces", level: 2, emoji: "🍀", title: "Space notes spell FACE", notes: "F4/1 A4/1 C5/1 E5/1",
+    tip: "The notes in the spaces between the lines spell F-A-C-E, going up!" },
+  { id: "rhythm", level: 2, emoji: "🐢", title: "Short and long notes", notes: "C4/1 C4/1 C4/2 D4/1 D4/1 D4/2 C4/4",
+    tip: "Filled-in notes are short. Hollow notes are long — hold them and let them ring!" },
+  { id: "sharps", level: 2, emoji: "⬛", title: "Black keys: sharps", notes: "C#4/1 C#4/1 F#4/1 F#4/1 C#4/2",
+    tip: "A sharp (♯) means the black key just to the RIGHT of the letter key. Find C♯ and F♯!" },
+  { id: "bass", level: 2, emoji: "👈", title: "Low notes: the bass clef", notes: "G3/1 A3/1 B3/1 A3/1 G3/1",
+    tip: "Low notes live on the bottom staff, called the bass clef. Try G, A and B just below middle C." },
+  { id: "octave", level: 2, emoji: "🪜", title: "A whole octave: C to C", notes: "C4/1 D4/1 E4/1 F4/1 G4/1 A4/1 B4/1 C5/2",
+    tip: "Eight steps from C to the next C — that's called an octave. Climb all the way to the top!" },
+  // --- level 3: song player — use your skills in real songs! ---
+  { id: "hot-cross", level: 3, emoji: "🥐", title: "Song practice: Hot Cross Buns", notes: "E4/1 D4/1 C4/2 E4/1 D4/1 C4/2", song: true,
+    tip: "Three notes you know — E, D, C — make a whole real song. Play it twice through!" },
+  { id: "mary", level: 3, emoji: "🐑", title: "Song practice: Mary's Lamb", notes: "E4/1 D4/1 C4/1 D4/1 E4/1 E4/1 E4/2 D4/1 D4/1 D4/2 E4/1 G4/1 G4/2", song: true,
+    tip: "The whole first line of Mary Had a Little Lamb. Steps up, steps down — just like your finger walks!" },
+  { id: "twinkle", level: 3, emoji: "⭐", title: "Song practice: Twinkle Twinkle", notes: "C4/1 C4/1 G4/1 G4/1 A4/1 A4/1 G4/2 F4/1 F4/1 E4/1 E4/1 D4/1 D4/1 C4/2", song: true,
+    tip: "Twinkle starts with a BIG jump — C up to G! Then it walks back down one step at a time." },
+  { id: "ode", level: 3, emoji: "🎻", title: "Song practice: Ode to Joy", notes: "E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 E4/1.5 D4/.5 D4/2", song: true,
+    tip: "Beethoven's famous melody uses only five keys, C to G. Your hand already knows them all!" },
+  { id: "jingle", level: 3, emoji: "🔔", title: "Song practice: Jingle Bells", notes: "E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/.5 E4/4", song: true,
+    tip: "The whole chorus of Jingle Bells! Watch for the short and long E notes — jingle all the way!" },
+  { id: "birthday", level: 3, emoji: "🎂", title: "Song practice: Happy Birthday", notes: "G4/.75 G4/.25 A4/1 G4/1 C5/1 B4/2 G4/.75 G4/.25 A4/1 G4/1 D5/1 C5/2", song: true,
+    tip: "Learn this one and you can play it at every birthday party — the first two lines!" },
+  // --- level 4: advanced ---
+  { id: "staff-cross", level: 4, emoji: "🌉", title: "Cross the staves", notes: "G3/1 A3/1 B3/1 C4/1 D4/1 E4/1 D4/1 C4/1 B3/1 A3/1 G3/2",
+    tip: "Watch the notes climb from the bass staff up into the treble — your eyes have to jump too!" },
+  { id: "eighths", level: 4, emoji: "⚡", title: "Fast fingers: eighth notes", notes: "C4/.5 D4/.5 E4/.5 F4/.5 G4/.5 F4/.5 E4/.5 D4/.5 C4/1",
+    tip: "Notes with little flags are eighth notes — twice as fast! Keep your fingers light and quick." },
+  { id: "black-keys", level: 4, emoji: "🌑", title: "Black-key melody", notes: "C#4/1 D#4/1 F#4/1 G#4/1 A#4/1 G#4/1 F#4/1 D#4/1 C#4/2",
+    tip: "A whole melody on ONLY black keys! This five-note scale is how lots of folk songs are built." },
+  { id: "leaps", level: 4, emoji: "🤸", title: "Big leaps: octaves", notes: "C4/1 C5/1 D4/1 D5/1 E4/1 E5/1 C4/2",
+    tip: "Jump a whole octave — same letter name, far apart! Look before you leap." },
+  { id: "fur-elise", level: 4, emoji: "🎩", title: "Song practice: Für Elise", notes: "E5/.5 Eb5/.5 E5/.5 Eb5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5", song: true,
+    tip: "Beethoven's most famous sparkle — quick, twinkling steps at the top of the piano. You've got this!" },
+  { id: "row-boat", level: 4, emoji: "🚣", title: "Song practice: Row Your Boat", song: true,
+    notes: "C4/1 C4/1 C4/.75 D4/.25 E4/1 E4/.75 D4/.25 E4/.75 F4/.25 G4/2 C5/.33 C5/.33 C5/.34 G4/.33 G4/.33 G4/.34 E4/.33 E4/.33 E4/.34 C4/.33 C4/.33 C4/.34 G4/.75 F4/.25 E4/.75 D4/.25 C4/2",
+    tip: "The trickiest rhythms yet — dotted notes and fast triplets. Row, row, row your boat!" },
+];
+const DONE_KEY = "midipiano-lessons-done";
+function lessonsDone() {
+  try { return new Set(JSON.parse(localStorage.getItem(DONE_KEY)) || []); } catch { return new Set(); }
+}
+function markLessonDone(i) {
+  const s = lessonsDone(); s.add(LESSONS[i].id);
+  try { localStorage.setItem(DONE_KEY, JSON.stringify([...s])); } catch {}
+  renderLessons();
+}
+function updateDoneUI() {
+  document.getElementById("doneMsg").textContent = lesson !== null ? "Lesson complete!" : "Great job!";
+  document.getElementById("againBtn").hidden = false;
+  nextBtn.hidden = !(lesson !== null && lesson + 1 < LESSONS.length);
+  document.getElementById("doneBackBtn").textContent = lesson !== null ? "⬅ All lessons" : "⬅ Back to songs";
+}
+const nextBtn = document.getElementById("nextBtn");
+nextBtn.onclick = () => openLesson(lesson + 1);
+
+/* ---------- level: placement test + storage ---------- */
+const LEVEL_KEY = "midipiano-level";
+function userLevel() {
+  const v = localStorage.getItem(LEVEL_KEY);
+  return v === null ? null : +v;
+}
+function saveLevel(l) { try { localStorage.setItem(LEVEL_KEY, l); } catch {} }
+
+const TEST_STAGES = [ // fumble a stage (4+ wrong keys) and that's your starting level
+  { level: 0, notes: "C4/1 C4/1", tip: "Warm-up! Play middle C twice — it's just left of the two black keys in the middle." },
+  { level: 1, notes: "C4/1 D4/1 E4/1 F4/1 G4/1", tip: "Walk up five keys in a row: C D E F G." },
+  { level: 2, notes: "E4/1 G4/1 B4/1 F#4/1", tip: "Read the staff: three line notes, then a sharp — the black key!" },
+  { level: 3, notes: "E5/.5 Eb5/.5 E5/.5 Eb5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1", tip: "Last one — a real melody, quick and sparkly!" },
+];
+let testing = false, testStage = 0, testWrongs = 0;
+
+function startTest() {
+  lesson = null;
+  testing = true;
+  testStage = 0;
+  runTestStage();
+}
+function runTestStage() {
+  const st = TEST_STAGES[testStage];
+  testWrongs = 0;
+  enterPlayer({ title: `Level test — part ${testStage + 1} of ${TEST_STAGES.length}`, emoji: "🧭", bpm: 90, notes: st.notes });
+  lessonTip.textContent = st.tip;
+  startMode("learn");
+}
+function nextTestStage() {
+  testStage++;
+  if (testStage < TEST_STAGES.length) runTestStage();
+  else finishTest(LEVELS.length - 1); // aced everything
+}
+function finishTest(levelIdx) {
+  testing = false;
+  saveLevel(levelIdx);
+  document.getElementById("doneMsg").textContent =
+    `You're a ${LEVELS[levelIdx].emoji} ${LEVELS[levelIdx].name}! Lessons are marked for you.`;
+  document.getElementById("againBtn").hidden = true;
+  nextBtn.hidden = true;
+  document.getElementById("doneBackBtn").textContent = "⬅ Let's go!";
+  doneEl.classList.add("show");
+  renderLessons();
+  renderForYou();
+}
+
+/* ---------- song recommendations by level + music type ---------- */
+const GENRES = { nursery: "🧸 Nursery rhymes", classical: "🎻 Classical", party: "🎉 Party & holiday", custom: "🎵 My uploads" };
+const GENRE_KEY = "midipiano-genres";
+function genrePrefs() {
+  try {
+    const a = JSON.parse(localStorage.getItem(GENRE_KEY));
+    if (Array.isArray(a) && a.length) return new Set(a);
+  } catch {}
+  return new Set(Object.keys(GENRES));
+}
+function toggleGenre(g) {
+  const s = genrePrefs();
+  s.has(g) ? s.delete(g) : s.add(g);
+  if (!s.size) s.add(g); // never allow zero types — nothing to recommend
+  try { localStorage.setItem(GENRE_KEY, JSON.stringify([...s])); } catch {}
+  renderForYou();
+}
+function songLevel(s) {
+  if (s.stars) return s.stars === 3 ? 4 : s.stars;
+  // uploaded songs: guess difficulty from length, speed and black keys
+  const quick = s.notes.some(n => n.dur <= 0.5);
+  const sharps = s.notes.some(n => NAMES[n.midi % 12].includes("#"));
+  return s.notes.length > 60 || (quick && sharps) ? 4 : quick || s.notes.length > 30 ? 2 : 1;
+}
+function renderForYou() {
+  const chips = document.getElementById("genreChips");
+  chips.innerHTML = "";
+  const prefs = genrePrefs();
+  for (const [g, label] of Object.entries(GENRES)) {
+    const c = document.createElement("button");
+    c.className = "chip" + (prefs.has(g) ? " on" : "");
+    c.textContent = label;
+    c.onclick = () => toggleGenre(g);
+    chips.appendChild(c);
+  }
+  const el = document.getElementById("forYouCards");
+  el.innerHTML = "";
+  const lvl = userLevel();
+  if (lvl === null) {
+    const b = document.createElement("button");
+    b.className = "card add";
+    b.innerHTML = `<div class="emoji">🧭</div><h2>Find my level</h2><div class="meta">take the 1-minute playing test and we'll pick songs for you!</div>`;
+    b.onclick = startTest;
+    el.appendChild(b);
+    return;
+  }
+  const target = Math.max(1, lvl); // song difficulty starts at level 1
+  const picks = [...SONGS, ...customSongs]
+    .filter(s => prefs.has(s.custom ? "custom" : s.genre))
+    .map(s => ({ s, d: Math.abs(songLevel(s) - target) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 6);
+  if (!picks.length) {
+    const d = document.createElement("div");
+    d.className = "level-head";
+    d.textContent = "No songs of that type yet — upload one below!";
+    el.appendChild(d);
+    return;
+  }
+  for (const { s, d } of picks) {
+    const b = document.createElement("button");
+    b.className = "card";
+    const em = document.createElement("div"); em.className = "emoji"; em.textContent = s.emoji;
+    const h = document.createElement("h2"); h.textContent = s.title;
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = d === 0 ? "💚 just right for you" : songLevel(s) < target ? "😌 easy & fun" : "🔥 a challenge!";
+    b.append(em, h, meta);
+    b.onclick = () => openSong(s);
+    el.appendChild(b);
+  }
+}
+
+function openLesson(i) {
+  lesson = i;
+  const L = LESSONS[i];
+  enterPlayer({ title: `${i + 1}. ${L.title}`, emoji: L.emoji, bpm: 90, notes: L.notes });
+  lessonTip.textContent = L.tip;
+  startMode("learn");
+}
+
+function openFreePlay() {
+  lesson = null;
+  enterPlayer({ title: "Free play", emoji: "🎹", bpm: 100, notes: [] });
+  startMode("free");
+}
+
+function renderLessons() {
+  const el = document.getElementById("lessonCards");
+  el.innerHTML = "";
+  const done = lessonsDone();
+  const lvl = userLevel();
+  // level test card first
+  const test = document.createElement("button");
+  test.className = "card add";
+  test.innerHTML = `<div class="emoji">🧭</div><h2>${lvl === null ? "Find my level" : "Retake the level test"}</h2>
+    <div class="meta">${lvl === null ? "a 1-minute playing test" : `you're a ${LEVELS[lvl].emoji} ${LEVELS[lvl].name}`}</div>`;
+  test.onclick = startTest;
+  el.appendChild(test);
+  LEVELS.forEach((LV, li) => {
+    const head = document.createElement("div");
+    head.className = "level-head";
+    head.innerHTML = `${LV.emoji} <b>${LV.name}</b>` + (lvl === li ? ` <span class="star">— ⭐ start here!</span>` : "");
+    el.appendChild(head);
+    LESSONS.forEach((L, i) => {
+      if (L.level !== li) return;
+      const b = document.createElement("button");
+      b.className = "card";
+      const em = document.createElement("div"); em.className = "emoji"; em.textContent = L.emoji;
+      const h = document.createElement("h2"); h.textContent = `${i + 1}. ${L.title}`;
+      const meta = document.createElement("div"); meta.className = "meta";
+      meta.textContent = done.has(L.id) ? "✅ done — play again!" : L.song ? "🎵 play a real song!" : "▶ start lesson";
+      b.append(em, h, meta);
+      b.onclick = () => openLesson(i);
+      el.appendChild(b);
+    });
+  });
+  const free = document.createElement("button");
+  free.className = "card";
+  free.innerHTML = `<div class="emoji">🎹</div><h2>Free play</h2><div class="meta">no rules — just jam!</div>`;
+  free.onclick = openFreePlay;
+  el.appendChild(free);
+}
+renderLessons();
+renderForYou();
+
+/* self-check: song + lesson data parses and stays inside the visible keyboard */
+console.assert([...SONGS, ...LESSONS].every(s => parseSong(s).every(n => n.midi >= LOW && n.midi <= HIGH)),
   "song note out of keyboard range");
 </script>
 </body>
