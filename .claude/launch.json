@@ -4,7 +4,7 @@
     {
       "name": "piano",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["/Users/kamatbot/Piano/server.js"],
+      "runtimeArgs": ["server.js"],
       "port": 3000
     }
   ]
