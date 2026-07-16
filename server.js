@@ -7,11 +7,12 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(__dirname));
 
-// ponytail: data dir sits outside the app dir so redeploys don't wipe it;
-// falls back to the app dir if the parent isn't writable
-let DATA = path.join(__dirname, "..", "piano-data");
-try { fs.mkdirSync(DATA, { recursive: true }); }
-catch { DATA = __dirname; }
+// ponytail: data dir pinned to an absolute path OUTSIDE any deploy dir so
+// redeploys/respawns don't wipe it. Override with PIANO_DATA_DIR in the panel env.
+// No silent fallback into the app dir — that dir gets replaced on every redeploy,
+// which is exactly how the library got wiped before. Fail loud if unwritable.
+const DATA = process.env.PIANO_DATA_DIR || path.join(require("os").homedir(), "piano-data");
+fs.mkdirSync(DATA, { recursive: true });
 const FILE = path.join(DATA, "songs.json");
 const load = () => { try { return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch { return []; } };
 
@@ -31,7 +32,8 @@ app.post("/api/songs", (req, res) => {
   if (songs.length >= 200) return res.status(507).json({ error: "library full" });
   const song = { title: title.trim(), emoji: "🎵", bpm: Math.round(bpm), notes, custom: true };
   songs.push(song);
-  fs.writeFileSync(FILE, JSON.stringify(songs));
+  try { fs.writeFileSync(FILE, JSON.stringify(songs)); }
+  catch { return res.status(500).json({ error: "save failed" }); }
   res.json(song);
 });
 // ponytail: no delete endpoint and no auth — anyone can add, nobody can remove.
