@@ -83,6 +83,14 @@
   .btn.mic { background: #636e72; }
   .btn.mic.on { background: #d63031; animation: micPulse 1.2s infinite; }
   @keyframes micPulse { 50% { box-shadow: 0 4px 0 rgba(0,0,0,.3), 0 0 16px #ff7675; } }
+  /* live proof the mic is hearing the room: level bar + whatever note it recognises */
+  #micHear { display: flex; align-items: center; gap: 7px; color: #fff; font-size: .95rem; }
+  #micHear i { width: 46px; height: 9px; border-radius: 5px; background: rgba(255,255,255,.25); overflow: hidden; }
+  #micHear i::after {
+    content: ""; display: block; height: 100%; width: var(--lvl, 0%);
+    background: #55efc4; transition: width .08s linear;
+  }
+  #micHear b { min-width: 32px; font-weight: normal; }
   #progress { color: #ffeaa7; font-size: 1.05rem; min-width: 70px; text-align: center; }
   #lessonTip {
     background: rgba(255,255,255,.14); color: #fff; text-align: center;
@@ -158,7 +166,8 @@
     <button class="btn back" id="backBtn">⬅ Songs</button>
     <span class="title" id="songTitle"></span>
     <span id="progress" hidden></span>
-    <button class="btn mic" id="micBtn" hidden>🎤 Listen</button>
+    <span id="micHear" hidden><i id="micBar"></i><b id="micNote">–</b></span>
+    <button class="btn mic" id="micBtn" hidden>🎤 Listening</button>
     <button class="btn mode" id="modeBtn" title="Change mode">🌊</button>
     <select id="speed" title="Speed">
       <option value="0.5">🐢 Slow</option>
@@ -227,13 +236,13 @@ const SONGS = [
     "G4/.75 G4/.25 A4/1 G4/1 C5/1 B4/2 G4/.75 G4/.25 A4/1 G4/1 D5/1 C5/2 " +
     "G4/.75 G4/.25 G5/1 E5/1 C5/1 B4/1 A4/2 F5/.75 F5/.25 E5/1 C5/1 D5/1 C5/2" },
   { title: "Jingle Bells", emoji: "🔔", bpm: 130, stars: 2, genre: "party", notes:
-    "E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/.5 E4/4 " +
-    "F4/1 F4/1 F4/1.5 F4/.5 F4/1 E4/1 E4/1 E4/.5 E4/.5 E4/1 D4/1 D4/1 E4/1 D4/2 G4/2 " +
-    "E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/.5 E4/4 " +
-    "F4/1 F4/1 F4/1.5 F4/.5 F4/1 E4/1 E4/1 E4/.5 E4/.5 G4/1 G4/1 F4/1 D4/1 C4/4" },
+    "E4/1* E4/1* E4/2 E4/1* E4/1* E4/2 E4/1* G4/1* C4/1.5 D4/.5 E4/4 " +
+    "F4/1* F4/1* F4/1.5 F4/.5 F4/1* E4/1* E4/1* E4/.5 E4/.5 E4/1 D4/1 D4/1 E4/1 D4/2 G4/2 " +
+    "E4/1* E4/1* E4/2 E4/1* E4/1* E4/2 E4/1* G4/1* C4/1.5 D4/.5 E4/4 " +
+    "F4/1* F4/1* F4/1.5 F4/.5 F4/1* E4/1* E4/1* E4/.5 E4/.5 G4/1 G4/1 F4/1 D4/1 C4/4" },
   { title: "Ode to Joy", emoji: "🎻", bpm: 120, stars: 2, genre: "classical", notes:
-    "E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 E4/1.5 D4/.5 D4/2 " +
-    "E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 D4/1.5 C4/.5 C4/2" },
+    "E4/1~ E4/1~ F4/1~ G4/1 G4/1~ F4/1~ E4/1~ D4/1 C4/1~ C4/1~ D4/1~ E4/1 E4/1.5~ D4/.5 D4/2 " +
+    "E4/1~ E4/1~ F4/1~ G4/1 G4/1~ F4/1~ E4/1~ D4/1 C4/1~ C4/1~ D4/1~ E4/1 D4/1.5~ C4/.5 C4/2" },
   { title: "Für Elise (opening)", emoji: "🎩", bpm: 120, stars: 3, genre: "classical", notes:
     "E5/.5 Eb5/.5 E5/.5 Eb5/.5 E5/.5 B4/.5 D5/.5 C5/.5 A4/1.5 r/.5 " +
     "C4/.5 E4/.5 A4/.5 B4/1.5 r/.5 E4/.5 Ab4/.5 B4/.5 C5/1.5 r/.5 " +
@@ -242,41 +251,68 @@ const SONGS = [
 ];
 
 /* ---------- note parsing ---------- */
+/* Tokens are "NoteOctave/beats", "r/beats" = rest. Two optional articulation marks
+   go after the beats — "*" = staccato (bouncy: a dot on the sheet, and it sounds
+   clipped), "~" = slurred into the next note (legato: one curved line arcs over the
+   whole run). parseFloat reads the number and stops at the mark, so ".5*" is 0.5.
+   The mark is "*" and not "." because "." is already the decimal point. */
 const SEMI = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
 function toMidi(tok) { // "Eb5" / "F#4" -> midi number
   const m = tok.match(/^([A-G])([b#]?)(\d)$/);
   let n = SEMI[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);
   return 12 * (+m[3] + 1) + n;
 }
-function parseSong(song) { // -> [{midi, start, dur}] in beats
+function parseSong(song) { // -> [{midi, start, dur, stac, slur}] in beats
   const out = []; let t = 0;
   for (const tok of song.notes.trim().split(/\s+/)) {
     const [p, d] = tok.split("/"); const dur = parseFloat(d);
-    if (p !== "r") out.push({ midi: toMidi(p), start: t, dur });
+    if (p !== "r") out.push({ midi: toMidi(p), start: t, dur, stac: d.includes("*"), slur: d.includes("~") });
     t += dur;
   }
   return out;
+}
+/* Uploaded MIDI carries real performance timing, so the articulation is in the gaps:
+   a note released well before the next one starts was played staccato; one held right
+   up to the next was slurred. */
+function deriveArticulation(notes) {
+  const ns = [...notes].sort((a, b) => a.start - b.start);
+  for (let i = 0; i < ns.length; i++) {
+    const n = ns[i];
+    let j = i + 1;
+    while (j < ns.length && ns[j].start <= n.start + 1e-6) j++; // skip this note's chord mates
+    if (j >= ns.length) break;
+    const slot = ns[j].start - n.start, gap = ns[j].start - (n.start + n.dur);
+    // comfortable margins, not knife edges: MIDI timing is human and the arithmetic is floaty
+    if (gap > slot * 0.45) n.stac = true;
+    else if (gap < slot * 0.1) n.slur = true;
+  }
+  return notes;
 }
 
 /* ---------- audio: tiny piano-ish synth, no samples ---------- */
 let actx = null;
 function audio() { return actx || (actx = new (window.AudioContext || window.webkitAudioContext)()); }
-function playNote(midi, dur = 0.5, when = 0) {
+function playNote(midi, dur = 0.5, when = 0, short = false) {
   const ctx = audio(), t = ctx.currentTime + when;
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const hold = short ? Math.min(dur, 0.12) : Math.max(dur, 0.3); // staccato: clipped, not held
+  const tail = short ? 0.1 : 0.3;
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0, t);
   gain.gain.linearRampToValueAtTime(0.25, t + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + Math.max(dur, 0.3) + 0.3);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + hold + tail);
   for (const [type, mult, vol] of [["triangle", 1, 1], ["sine", 2, 0.4]]) {
     const o = ctx.createOscillator();
     o.type = type; o.frequency.value = freq * mult;
     const g = ctx.createGain(); g.gain.value = vol;
     o.connect(g); g.connect(gain);
-    o.start(t); o.stop(t + Math.max(dur, 0.3) + 0.35);
+    o.start(t); o.stop(t + hold + tail + 0.05);
   }
+  // our own speaker is a piano too: don't let the mic hear it and "play" the note for us
+  micDeafUntil = Math.max(micDeafUntil, performance.now() + (when + hold + tail) * 1000 + 120);
 }
+let micDeafUntil = 0;
 
 /* ---------- keyboard build (C3..C6) ---------- */
 const LOW = 48, HIGH = 84; // midi range shown
@@ -404,6 +440,7 @@ fileInput.onchange = async () => {
   try {
     parsed = parseMidi(await f.arrayBuffer());
     if (document.getElementById("melodyOnly")?.checked) parsed.notes = melodyOnly(parsed.notes);
+    deriveArticulation(parsed.notes); // melodyOnly trims durations, so read the gaps after it
   } catch (e) {
     console.warn(e);
     return alert("Sorry, couldn't read that file. Please upload a standard MIDI (.mid) file.");
@@ -614,18 +651,20 @@ function startMode(m) {
   modeBtn.textContent = learn ? "🪜" : "🌊";
   modeBtn.hidden = lesson !== null || m === "free"; // lessons and free play have one fixed mode
   micBtn.hidden = !learn;
+  if (!learn) micHear.hidden = true;
   progressEl.hidden = !learn;
   playBtn.hidden = m !== "fall";
   restartBtn.hidden = m === "free";
   speedSel.hidden = m !== "fall";
   lessonTip.hidden = !(learn && (lesson !== null || testing));
   audio().resume(); // user gesture: unlock audio for iPad
-  if (learn) startLearn();
+  if (learn) { startLearn(); startMic(); } // listening is on by default — no button to find
   else { stopMic(); stopLearn(); resetPlayback(); }
 }
 
 /* ---------- learn (step-by-step) mode ---------- */
 let steps = [], stepIdx = 0, remaining = new Set(), learnT = 0, learnAnim = 0;
+let slurRuns = []; // [startStep, endStep] pairs — one curved line per legato phrase
 
 function startLearn() {
   cancelAnimationFrame(raf);
@@ -639,6 +678,15 @@ function startLearn() {
     if (last && n.start - last.start < 0.02) last.notes.push(n); // same start = chord = one step
     else steps.push({ start: n.start, notes: [n] });
   }
+  // a run of slurred notes gets ONE arc spanning the whole phrase, the way it's engraved
+  slurRuns = [];
+  for (let i = 0; i < steps.length - 1; i++) {
+    if (!steps[i].notes.some(n => n.slur)) continue;
+    let j = i;
+    while (j < steps.length - 1 && steps[j].notes.some(n => n.slur)) j++;
+    slurRuns.push([i, j]);
+    i = j; // the note the slur lands on can start the next phrase
+  }
   stepIdx = 0;
   setStep(true);
 }
@@ -646,6 +694,7 @@ function startLearn() {
 function stopLearn() {
   cancelAnimationFrame(learnAnim);
   steps = [];
+  slurRuns = []; // must go with steps: stale runs index into the previous song and crash the draw
   remaining = new Set();
   progressEl.textContent = "";
 }
@@ -697,7 +746,8 @@ function userPlayed(midi, viaMic = false) {
     el.classList.add("lit");
     setTimeout(() => { if (!remaining.has(hit)) el.classList.remove("lit"); }, 350);
   }
-  if (viaMic) playNote(hit, 0.15); // soft confirmation chime; taps already made their own sound
+  // no chime for a mic note: the player's own piano already made the sound, and echoing it
+  // would deafen us (see micDeafUntil) right when the next note is being played
   const step = steps[stepIdx];
   step.notes.forEach(n => { if (n.midi === hit) n.played = true; });
   draw(learnT);
@@ -718,6 +768,7 @@ function noteInfo(midi) { // p = diatonic position; C4 = 28, each staff line/spa
   const name = NAMES[midi % 12];
   return { letter: name[0], sharp: name.length > 1, p: (Math.floor(midi / 12) - 1) * 7 + DIA[name[0]] };
 }
+function stemUp(p) { return p < (p >= 27 ? 34 : 22); } // below its staff's middle line → stem up
 
 function drawSheet(sf) { // sf = step index, fractional while the scroll animates
   const W = canvas.width, H = canvas.height;
@@ -761,13 +812,17 @@ function drawSheet(sf) { // sf = step index, fractional while the scroll animate
         cx.beginPath(); cx.moveTo(x - r * 1.9, ly); cx.lineTo(x + r * 1.9, ly); cx.stroke();
       }
       // note head: filled = quarter, hollow = half, hollow w/o stem = whole
-      const whole = n.dur >= 3.5, hollow = n.dur >= 1.5;
+      const whole = n.dur >= 3.5, hollow = n.dur >= 1.5, up = stemUp(p);
       cx.lineWidth = 2.2;
       cx.beginPath();
       cx.ellipse(x, hy, r * 1.2, r * 0.85, -0.35, 0, Math.PI * 2);
       hollow ? cx.stroke() : cx.fill();
+      if (n.stac) { // staccato dot, on the head's stem-free side: hop off this key
+        cx.beginPath();
+        cx.arc(x, hy + (up ? g * 0.95 : -g * 0.95), Math.max(1.5, g * 0.17), 0, Math.PI * 2);
+        cx.fill();
+      }
       if (!whole) { // stem, plus a flag for eighth notes
-        const up = p < (p >= 27 ? 34 : 22); // below the staff's middle line → stem up
         const sx = up ? x + r * 1.1 : x - r * 1.1;
         const sy = hy + (up ? -2.9 * g : 2.9 * g);
         cx.lineWidth = 1.8;
@@ -799,85 +854,185 @@ function drawSheet(sf) { // sf = step index, fractional while the scroll animate
       cx.fillText(lbl, x, yOf(16) + g);
     }
   }
+  // slurs last, so the arcs sit on top of the staff: one line per legato phrase,
+  // curving away from the stems the way real engraving does
+  for (const [i, j] of slurRuns) {
+    const x1 = headX + (i - sf) * SP, x2 = headX + (j - sf) * SP;
+    if (x2 < headX - g * 1.8 || x1 > px + pw - g * 2) continue;
+    let ups = 0, downs = 0, top = Infinity, bot = -Infinity;
+    for (let k = i; k <= j; k++) for (const n of steps[k].notes) {
+      const p = noteInfo(n.midi).p, y = yOf(p);
+      stemUp(p) ? ups++ : downs++;
+      top = Math.min(top, y); bot = Math.max(bot, y);
+    }
+    const below = ups >= downs;
+    const edge = below ? bot + g * 1.05 : top - g * 1.05; // hug the phrase; a deep arc collides with the other staff
+    const ctrl = edge + (below ? g * 1.15 : -g * 1.15);
+    cx.strokeStyle = j < stepIdx ? "#b2bec3" : "#2d3436";
+    cx.lineWidth = 1.7;
+    cx.beginPath();
+    cx.moveTo(x1, edge);
+    cx.quadraticCurveTo((x1 + x2) / 2, ctrl, x2, edge);
+    cx.stroke();
+  }
   cx.textBaseline = "alphabetic"; // restore the canvas default for the falling-notes view
 }
 
-/* ---------- microphone listening (learn mode) ---------- */
-let micStream = null, micNode = null, micRaf = 0, micBuf = null;
-let micStable = { midi: 0, count: 0, last: 0 };
+/* ---------- microphone listening (learn mode) ----------
+   The mic runs by itself whenever a lesson is open — the button only mutes it.
+   Detection scores how *periodic* the sound is (0..1) instead of how loud it is:
+   a real piano a few feet from an iPad is quiet, and the old volume gate threw
+   all of it away before it ever reached the pitch detector. */
+const MIC_LOW = 40, MIC_HIGH = 96;   // E2..C7 — wider than the drawn keys so octave slips still land
+const MIC_CLARITY = 0.55;            // how periodic a window must be to count as a note at all
+const MIC_FLOOR = 0.002;             // below this the room really is silent
+let micStream = null, micNode = null, micRaf = 0, micBuf = null, micFrame = 0;
+let micWanted = true;                // the mute toggle — on unless the player turns it off
+let micState = "off";                // off | starting | on | blocked | unsupported
+let micStable = { midi: 0, count: 0 };
+let micLast = 0, micArmed = true, micPeak = 0;
+const micHear = document.getElementById("micHear");
+const micBar = document.getElementById("micBar");
+const micNoteEl = document.getElementById("micNote");
 
-micBtn.onclick = async () => {
-  if (micStream) return stopMic();
+function freqOfMidi(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function midiOfFreq(f) { return Math.round(69 + 12 * Math.log2(f / 440)); }
+function noteName(m) { return NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1); }
+
+function setMicState(s) {
+  micState = s;
+  micBtn.textContent = { off: "🔇 Muted", starting: "🎤 …", on: "🎤 Listening",
+    blocked: "🎤 Blocked", unsupported: "🎤 No mic" }[s];
+  micBtn.classList.toggle("on", s === "on");
+  micHear.hidden = s !== "on";
+  if (s !== "on") showMicLevel(0, -1);
+}
+
+async function startMic() {
+  if (micStream || micState === "starting" || !micWanted) return;
+  if (!navigator.mediaDevices?.getUserMedia) return setMicState("unsupported");
+  setMicState("starting");
+  let stream;
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    // AGC on: a piano across the room is faint, and gain doesn't move the pitch
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
     });
   } catch (e) {
-    console.warn(e);
-    return alert("Couldn't turn on the microphone. Please allow mic access in your browser settings (the mic only works over https or localhost).");
+    console.warn("mic blocked:", e);
+    return setMicState("blocked");
   }
+  if (!micWanted || mode !== "learn") { // left the lesson while the prompt was up
+    stream.getTracks().forEach(t => t.stop());
+    return setMicState("off");
+  }
+  micStream = stream;
   const ctx = audio();
-  ctx.resume();
+  await ctx.resume(); // a suspended context hands the analyser pure silence — this was the iPad bug
   micNode = ctx.createAnalyser();
   micNode.fftSize = 2048;
   ctx.createMediaStreamSource(micStream).connect(micNode);
   micBuf = new Float32Array(micNode.fftSize);
-  micStable = { midi: 0, count: 0, last: 0 };
-  micBtn.classList.add("on");
-  micBtn.textContent = "🎤 Listening…";
+  micStable = { midi: 0, count: 0 };
+  micLast = 0; micArmed = true; micPeak = 0;
+  micStream.getTracks()[0].onended = () => { stopMic(); startMic(); }; // headset yanked → come back
+  setMicState("on");
   micLoop();
-};
+}
 
 function stopMic() {
   cancelAnimationFrame(micRaf);
   if (micStream) micStream.getTracks().forEach(t => t.stop());
   micStream = micNode = null;
-  micBtn.classList.remove("on");
-  micBtn.textContent = "🎤 Listen";
+  if (micState === "on" || micState === "starting") setMicState("off");
 }
 
-let micFrame = 0;
+micBtn.onclick = () => {
+  micWanted = !micWanted;
+  if (micWanted) startMic();
+  else { stopMic(); setMicState("off"); }
+};
+
+function showMicLevel(rms, freq) {
+  micBar.style.setProperty("--lvl", Math.min(100, Math.round(rms * 1200)) + "%");
+  micNoteEl.textContent = freq > 0 ? noteName(midiOfFreq(freq)) : "–";
+}
+
 function micLoop() {
   if (!micNode) return;
   micRaf = requestAnimationFrame(micLoop);
-  if (micFrame++ % 2) return; // autocorrelation is O(n²) — every other frame is plenty
+  if (micFrame++ % 2) return; // the correlation is the pricey part; ~30 Hz is plenty to catch a note
+  const ctx = audio();
+  if (ctx.state === "suspended") { ctx.resume(); return; } // iOS suspends on every interruption
   micNode.getFloatTimeDomainData(micBuf);
-  const freq = detectPitch(micBuf, audio().sampleRate);
-  if (freq < 0) { micStable.count = 0; micStable.last = 0; return; } // silence re-arms repeated notes
-  const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+  const N = micBuf.length;
+  let mean = 0;
+  for (let i = 0; i < N; i++) mean += micBuf[i];
+  mean /= N;
+  let rms = 0;
+  for (let i = 0; i < N; i++) { const v = micBuf[i] - mean; rms += v * v; }
+  rms = Math.sqrt(rms / N);
+  const freq = rms < MIC_FLOOR ? -1 : detectPitch(micBuf, ctx.sampleRate, mean);
+  showMicLevel(rms, freq); // always show the level: "too quiet" should look different from "mic dead"
+  if (performance.now() < micDeafUntil) return; // that's our own speaker singing, not the player
+  if (freq < 0) { micStable.count = 0; micArmed = true; micPeak = 0; return; }
+  // a fresh strike re-arms a repeated note; a note left ringing does not
+  if (rms < micPeak * 0.45) micArmed = true;
+  micPeak = Math.max(rms, micPeak * 0.97);
+  const midi = midiOfFreq(freq);
   if (midi === micStable.midi) micStable.count++;
   else { micStable.midi = midi; micStable.count = 1; }
-  if (micStable.count === 3 && midi !== micStable.last) { // ~50ms of steady pitch = a real note
-    micStable.last = midi;
-    userPlayed(midi, true);
-  }
+  if (micStable.count !== 2) return; // two steady reads = a note, not a click or a key squeak
+  if (midi === micLast && !micArmed) return;
+  micLast = midi; micArmed = false;
+  userPlayed(midi, true);
 }
 
-/* autocorrelation pitch detector (time domain, good enough for single piano notes) */
-function detectPitch(buf, sampleRate) {
-  const SIZE = buf.length;
-  let rms = 0;
-  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
-  if (Math.sqrt(rms / SIZE) < 0.015) return -1; // too quiet
-  // trim quiet edges so the correlation sees the meat of the waveform
-  let r1 = 0, r2 = SIZE - 1;
-  for (let i = 0; i < SIZE / 2; i++) if (Math.abs(buf[i]) < 0.2) { r1 = i; break; }
-  for (let i = 1; i < SIZE / 2; i++) if (Math.abs(buf[SIZE - i]) < 0.2) { r2 = SIZE - i; break; }
-  const b = buf.slice(r1, r2), N = b.length;
-  const c = new Float32Array(N);
-  for (let lag = 0; lag < N; lag++)
-    for (let i = 0; i < N - lag; i++) c[lag] += b[i] * b[i + lag];
-  let d = 0;
-  while (d < N - 1 && c[d] > c[d + 1]) d++;
-  let maxpos = -1, maxval = -1;
-  for (let i = d; i < N; i++) if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
-  if (maxpos <= 0) return -1;
-  let T = maxpos; // parabolic interpolation refines the peak between samples
-  const x1 = c[T - 1], x2 = c[T], x3 = T + 1 < N ? c[T + 1] : 0;
-  const a = (x1 + x3 - 2 * x2) / 2, bq = (x3 - x1) / 2;
-  if (a) T -= bq / (2 * a);
-  const freq = sampleRate / T;
-  return freq > 60 && freq < 2500 ? freq : -1; // piano-ish range only
+/* Normalized autocorrelation (NSDF, McLeod-style). Returns Hz, or -1 when the window
+   isn't periodic enough to be a note. Only lags inside the piano's range are scored —
+   the old detector swept every lag and happily locked onto room rumble, then threw the
+   result away for being under 60 Hz, which is why it seemed deaf. */
+let micWork = null, micNsdf = null; // scratch, reused: this runs ~30×/second forever
+function detectPitch(buf, sampleRate, mean) {
+  // Halve the sample rate first. The highest note we care about is ~2 kHz, so 24 kHz is
+  // still generous, and the search below costs lags × window — this makes it 4× cheaper
+  // and keeps an always-on detector from eating the frame budget on a tablet.
+  const N = buf.length >> 1, sr = sampleRate / 2;
+  if (!micWork || micWork.length !== N) micWork = new Float32Array(N);
+  const x = micWork;
+  for (let i = 0; i < N; i++) { // mean-removed and gently low-passed so nothing folds back
+    const j = i * 2;
+    x[i] = ((j ? buf[j - 1] : buf[0]) + 2 * buf[j] + buf[j + 1]) / 4 - mean;
+  }
+  const minLag = Math.max(2, Math.floor(sr / freqOfMidi(MIC_HIGH)));
+  const maxLag = Math.min(N - 4, Math.ceil(sr / freqOfMidi(MIC_LOW)));
+  if (maxLag <= minLag + 1) return -1;
+  const W = N - maxLag; // one window width for every lag, so the scores compare fairly
+  if (!micNsdf || micNsdf.length < maxLag + 2) micNsdf = new Float32Array(maxLag + 2);
+  const nsdf = micNsdf;
+  let best = 0, bestLag = -1;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let ac = 0, sq = 0;
+    for (let i = 0; i < W; i++) {
+      const a = x[i], b = x[i + lag];
+      ac += a * b;
+      sq += a * a + b * b;
+    }
+    const v = sq > 0 ? (2 * ac) / sq : 0; // -1..1, independent of how loud the note was
+    nsdf[lag] = v;
+    if (v > best) { best = v; bestLag = lag; }
+  }
+  if (bestLag < 0 || best < MIC_CLARITY) return -1;
+  // take the FIRST peak that's nearly as strong as the best: the correlation is just as
+  // happy at twice the period, and picking the strongest would report an octave too low
+  let lag = bestLag;
+  for (let l = minLag + 1; l < maxLag; l++) {
+    if (nsdf[l] >= best * 0.9 && nsdf[l] >= nsdf[l - 1] && nsdf[l] >= nsdf[l + 1]) { lag = l; break; }
+  }
+  const y1 = nsdf[lag - 1], y2 = nsdf[lag], y3 = nsdf[lag + 1]; // parabolic sub-sample refine
+  const denom = 2 * (2 * y2 - y1 - y3);
+  const freq = sr / (lag + (denom ? (y3 - y1) / denom : 0));
+  return freq > 20 && freq < sr / 2 ? freq : -1;
 }
 
 function songDuration() { return songBeats * secPerBeat() + 0.5; }
@@ -890,7 +1045,7 @@ function tick() {
     const el = keyEls[n.midi];
     if (!n.played && t >= ns) {
       n.played = true;
-      playNote(n.midi, n.dur * secPerBeat());
+      playNote(n.midi, n.dur * secPerBeat(), 0, n.stac);
       if (el) { el.classList.add("lit"); el.dataset.hold = "1"; }
     }
     if (n.played && t >= ne && el && el.dataset.hold) {
@@ -1001,6 +1156,9 @@ const LESSONS = [
     tip: "The notes in the spaces between the lines spell F-A-C-E, going up!" },
   { id: "rhythm", level: 2, emoji: "🐢", title: "Short and long notes", notes: "C4/1 C4/1 C4/2 D4/1 D4/1 D4/2 C4/4",
     tip: "Filled-in notes are short. Hollow notes are long — hold them and let them ring!" },
+  { id: "artic", level: 2, emoji: "🎢", title: "Smooth or bouncy", notes:
+      "C4/1~ D4/1~ E4/1 r/.5 G4/1* G4/1* G4/1* r/.5 E4/1~ D4/1~ C4/2",
+    tip: "A curved line means legato — glide from note to note, smooth like a slide. Dots mean staccato — hop off each key, bouncy like a ball!" },
   { id: "sharps", level: 2, emoji: "⬛", title: "Black keys: sharps", notes: "C#4/1 C#4/1 F#4/1 F#4/1 C#4/2",
     tip: "A sharp (♯) means the black key just to the RIGHT of the letter key. Find C♯ and F♯!" },
   { id: "bass", level: 2, emoji: "👈", title: "Low notes: the bass clef", notes: "G3/1 A3/1 B3/1 A3/1 G3/1",
